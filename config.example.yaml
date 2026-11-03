@@ -1,0 +1,58 @@
+# ╔══════════════════════════════════════════════════════════════════════════════╗
+# ║        KNOWLEDGE RAG — 1C:Enterprise (EDT) Config Example Template           ║
+# ╚══════════════════════════════════════════════════════════════════════════════╝
+
+paths:
+  documents_dir: "C:/path/to/your/1c_edt_project/git"
+  data_dir: "Z:/knowledge-rag/data"
+  models_cache_dir: "Z:/knowledge-rag/models_cache"
+  allow_cloud_sync: false
+
+documents:
+  supported_formats:
+    - .md
+    - .markdown
+    - .bsl
+    - .mdo
+
+  exclude_patterns:
+    - "CI/**"
+    - "live-client/**"
+    - "xUnitForEDT/**"
+    - "ИнструментыБСП/**"
+    - "ClientsFiles/**"
+    - ".git/**"
+    - ".ai-artifacts/**"
+    - "Configuration/.settings/**"
+
+  chunking:
+    chunk_size: 1800
+    chunk_overlap: 200
+
+  batch_size: 500
+  embed_batch_size: 256
+  parallel_workers: 2
+
+models:
+  embedding:
+    # Multilingual embedding model for combined Russian business language, 1C syntax and code
+    profile: "multilingual" # intfloat/multilingual-e5-large (1024 dims)
+    gpu: "true"
+
+  reranker:
+    enabled: true
+    model: "jinaai/jina-reranker-v2-base-multilingual"
+    top_k_multiplier: 3
+
+search:
+  default_results: 5
+  max_results: 30
+  collection_name: "aspu_docs"
+
+  lexical_fast_path:
+    enabled: true
+    rerank: true
+    min_hits: 3
+    patterns:
+      - '^(ASP|ASPU|D)-\d+'
+      - '^[A-Z0-9_]{3,}$'
