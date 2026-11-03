@@ -86,6 +86,8 @@ async def bridge_stdio_to_sse() -> None:
 
 
 def main() -> None:
+    import sys
+    sys.stdout.reconfigure(line_buffering=True)
     anyio.run(bridge_stdio_to_sse)
 
 
