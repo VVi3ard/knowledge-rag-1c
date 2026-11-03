@@ -4,10 +4,13 @@ Bridges standard MCP stdio JSON-RPC to the persistent background knowledge-rag d
 Ensures only ONE instance of the heavy embedding server ever runs on the host, preventing
 RAM bloat, VRAM exhaustion (CUDA OOM), and database lock collisions across multiple clients
 (Claude Desktop, Gemini Antigravity, IDEs).
+
+Runs completely invisible in the background via pythonw.exe without any terminal windows.
 """
 
 from __future__ import annotations
 
+import os
 import subprocess
 import time
 import urllib.request
@@ -22,7 +25,7 @@ HEALTH_URL = "http://127.0.0.1:8179/health"
 
 
 def ensure_server_running() -> None:
-    """Verify background daemon is alive; auto-spawn detached daemon if not."""
+    """Verify background daemon is alive; auto-spawn detached headless daemon if not."""
     try:
         with urllib.request.urlopen(HEALTH_URL, timeout=1) as resp:
             if resp.status == 200:
@@ -30,22 +33,25 @@ def ensure_server_running() -> None:
     except Exception:
         pass
 
-    # Start detached daemon in background
+    # Use pythonw.exe to ensure zero terminal windows or console popups on Windows
     base_dir = Path(r"Z:\knowledge-rag")
-    python_exe = base_dir / "venv" / "Scripts" / "python.exe"
+    pythonw_exe = base_dir / "venv" / "Scripts" / "pythonw.exe"
+    python_exe = pythonw_exe if pythonw_exe.exists() else (base_dir / "venv" / "Scripts" / "python.exe")
+
     cmd = [str(python_exe), "-m", "mcp_server.server"]
 
-    # Detach process on Windows
-    flags = 0
-    if hasattr(subprocess, "CREATE_NO_WINDOW"):
-        flags |= subprocess.CREATE_NO_WINDOW
-    if hasattr(subprocess, "DETACHED_PROCESS"):
-        flags |= subprocess.DETACHED_PROCESS
+    # CREATE_NO_WINDOW (0x08000000) | DETACHED_PROCESS (0x00000008)
+    creationflags = 0
+    if os.name == "nt":
+        creationflags = 0x08000000 | 0x00000008
 
     subprocess.Popen(
         cmd,
         cwd=str(base_dir),
-        creationflags=flags,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        creationflags=creationflags,
         close_fds=True,
     )
 
