@@ -3,10 +3,15 @@
 # ╚══════════════════════════════════════════════════════════════════════════════╝
 
 paths:
-  documents_dir: "C:/path/to/your/1c_edt_project/git"
+  documents_dir: "C:/path/to/your/1c_workspace"
   data_dir: "Z:/knowledge-rag/data"
   models_cache_dir: "Z:/knowledge-rag/models_cache"
   allow_cloud_sync: false
+
+server:
+  transport: "sse"
+  server_host: "127.0.0.1"
+  server_port: 8179
 
 documents:
   supported_formats:
@@ -15,23 +20,49 @@ documents:
     - .bsl
     - .mdo
 
+  # White-list filter: only include documentation, source codes and project references
+  include_patterns:
+    - "docs/**"
+    - "src/**"
+    - "references/**"
+
+  # Black-list filter: prune build artifacts, CI configs, and VCS folders
   exclude_patterns:
-    - "CI/**"
-    - "live-client/**"
-    - "xUnitForEDT/**"
-    - "ИнструментыБСП/**"
-    - "ClientsFiles/**"
-    - ".git/**"
-    - ".ai-artifacts/**"
-    - "Configuration/.settings/**"
+    - "backup/**"
+    - "tests/**"
+    - "**/commits/**"
+    - "**/retro/**"
+    - "**/skillib/**"
+    - "**/CI/**"
+    - "**/live-client/**"
+    - "**/xUnitForEDT/**"
+    - "**/ИнструментыБСП/**"
+    - "**/ClientsFiles/**"
+    - "**/.settings/**"
+    - "**/Local/**"
+    - "**/accessory/**"
+    - "**/tmp/**"
+    - "**/.git/**"
+    - "**/.ai-artifacts/**"
+    - "**/Configuration.ТПМ/**"
 
   chunking:
     chunk_size: 1800
     chunk_overlap: 200
 
-  batch_size: 500
-  embed_batch_size: 256
-  parallel_workers: 2
+  batch_size: 100
+  embed_batch_size: 32
+  parallel_workers: 1
+
+# Multi-project partitioning (more specific paths match first)
+category_mappings:
+  "git/tests": "ТестыASPU"
+  "git/": "aspu"
+  "pif3/": "pif3"
+  "work/ssl303": "SSL303"
+  "work/бсп_3_1_11_115": "SSL3111"
+  "work/s3_ssl": "s3_ssl"
+  "work/внешнииобработки": "external_epf"
 
 models:
   embedding:

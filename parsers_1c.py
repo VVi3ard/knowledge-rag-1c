@@ -87,6 +87,26 @@ QUERY_TABLES_RE = re.compile(
 )
 
 
+def detect_1c_project(filepath: Path) -> str:
+    """Detect high-level project name from file path."""
+    path_str = str(filepath).replace("\\", "/").lower()
+    if "git/tests" in path_str or "tests/тесты" in path_str:
+        return "ТестыASPU"
+    if "pif3" in path_str:
+        return "PIF3"
+    if "ssl303" in path_str:
+        return "SSL303"
+    if "бсп_3_1_11_115" in path_str or "bsp31" in path_str:
+        return "SSL3111"
+    if "s3_ssl" in path_str:
+        return "S3_SSL"
+    if "внешнииобработки" in path_str:
+        return "ВнешниеОбработки"
+    if "git" in path_str:
+        return "ASPU"
+    return "Общий"
+
+
 def resolve_1c_object_context(filepath: Path) -> Tuple[str, str, str]:
     """Resolve 1C metadata object name, module type, and unified header context.
 
@@ -340,7 +360,9 @@ def build_bsl_chunks(
     chunk_size: int = 2500,
 ) -> List[Any]:
     """Chunk BSL module code into semantically rich, method-bounded Chunks."""
+    project = detect_1c_project(filepath)
     object_name, module_type, display_title = resolve_1c_object_context(filepath)
+    display_title = f"[{project}] {display_title}"
     header_lines, methods, footer_lines = parse_bsl_methods(content)
 
     chunks: List[Any] = []
@@ -352,7 +374,7 @@ def build_bsl_chunks(
     if header_text and len(header_text) > 30:
         clean_header = clean_query_text(header_text)
         header_content = (
-            f"// [1С BSL] Объект: {object_name} ({module_type})\n"
+            f"// [1С BSL] Проект: {project} | Объект: {object_name} ({module_type})\n"
             f"// Раздел: Переменные модуля и директивы\n"
             f"//\n"
             f"{clean_header}"
@@ -364,6 +386,7 @@ def build_bsl_chunks(
             end_char=char_offset + len(header_text),
             metadata={
                 "title": display_title,
+                "project": project,
                 "type": "bsl_code",
                 "object_name": object_name,
                 "module_type": module_type,
@@ -385,7 +408,7 @@ def build_bsl_chunks(
         export_label = " (Экспорт)" if method.is_export else ""
         query_header_line = f"// Запросы к таблицам: {q_tables_str}\n" if q_tables_str else ""
         base_header = (
-            f"// [1С BSL] Объект: {object_name} ({module_type})\n"
+            f"// [1С BSL] Проект: {project} | Объект: {object_name} ({module_type})\n"
             f"// Область: {method.region} | Метод: {method.name}{export_label}\n"
             f"{query_header_line}//\n"
         )
@@ -395,6 +418,7 @@ def build_bsl_chunks(
         if len(full_chunk_text) <= chunk_size:
             meta = {
                 "title": display_title,
+                "project": project,
                 "type": "bsl_code",
                 "object_name": object_name,
                 "module_type": module_type,
@@ -435,13 +459,14 @@ def build_bsl_chunks(
             total_subs = len(sub_chunks_lines)
             for sub_idx, sub_lines in enumerate(sub_chunks_lines, 1):
                 sub_header = (
-                    f"// [1С BSL] Объект: {object_name} ({module_type})\n"
+                    f"// [1С BSL] Проект: {project} | Объект: {object_name} ({module_type})\n"
                     f"// Область: {method.region} | Метод: {method.name}{export_label} [Часть {sub_idx}/{total_subs}]\n"
                     f"{query_header_line}//\n"
                 )
                 sub_text = f"{sub_header}" + "\n".join(sub_lines)
                 meta = {
                     "title": display_title,
+                    "project": project,
                     "type": "bsl_code",
                     "object_name": object_name,
                     "module_type": module_type,
@@ -470,7 +495,7 @@ def build_bsl_chunks(
     if footer_text and len(footer_text) > 30:
         clean_footer = clean_query_text(footer_text)
         footer_content = (
-            f"// [1С BSL] Объект: {object_name} ({module_type})\n"
+            f"// [1С BSL] Проект: {project} | Объект: {object_name} ({module_type})\n"
             f"// Раздел: Инициализация модуля\n"
             f"//\n"
             f"{clean_footer}"
@@ -482,6 +507,7 @@ def build_bsl_chunks(
             end_char=char_offset + len(footer_text),
             metadata={
                 "title": display_title,
+                "project": project,
                 "type": "bsl_code",
                 "object_name": object_name,
                 "module_type": module_type,
@@ -654,10 +680,12 @@ def parse_mdo_file(filepath: Path) -> Tuple[str, Dict[str, Any]]:
         )
 
     # Build Markdown document representation
+    project = detect_1c_project(filepath)
     md_lines = [
-        f"# [1С Метаданные] {full_object_name}",
+        f"# [1С Метаданные] {full_object_name} | Проект: {project}",
         f"* **Тип метаданных:** {meta_type_ru}",
         f"* **Имя:** `{name}`",
+        f"* **Проект:** {project}",
     ]
     if synonym:
         md_lines.append(f"* **Синоним:** {synonym}")
@@ -743,10 +771,11 @@ def parse_mdo_file(filepath: Path) -> Tuple[str, Dict[str, Any]]:
 
     metadata = {
         "type": "1c_metadata",
+        "project": project,
         "object_name": full_object_name,
         "meta_type": meta_type_ru,
         "name": name,
-        "title": full_object_name,
+        "title": f"[{project}] {full_object_name} (Метаданные)",
         "file_size": filepath.stat().st_size,
         "modified": datetime.fromtimestamp(filepath.stat().st_mtime).isoformat(),
         "dimensions_count": len(dimensions),

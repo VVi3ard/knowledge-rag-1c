@@ -82,19 +82,38 @@ documents:
     - .bsl
     - .mdo
 
-  exclude_patterns:
-    - "CI/**"
-    - "live-client/**"
-    - "xUnitForEDT/**"
-    - "ИнструментыБСП/**"
-    - "ClientsFiles/**"
-    - ".git/**"
-    - ".ai-artifacts/**"
-    - "Configuration/.settings/**"
+  # Белый список: индексируем строго документацию, код и проектные правила
+  include_patterns:
+    - "docs/**"
+    - "src/**"
+    - "references/**"
 
-  chunking:
-    chunk_size: 1800
-    chunk_overlap: 200
+  exclude_patterns:
+    - "backup/**"
+    - "tests/**"
+    - "**/commits/**"
+    - "**/CI/**"
+    - "**/live-client/**"
+    - "**/xUnitForEDT/**"
+    - "**/ИнструментыБСП/**"
+    - "**/ClientsFiles/**"
+    - "**/.settings/**"
+    - "**/.git/**"
+    - "**/.ai-artifacts/**"
+
+# Мультипроектная маршрутизация категорий (более специфичные пути матчатся первыми)
+category_mappings:
+  "git/tests": "ТестыASPU"
+  "git/": "aspu"
+  "pif3/": "pif3"
+  "work/ssl303": "SSL303"
+  "work/бсп_3_1_11_115": "SSL3111"
+  "work/s3_ssl": "s3_ssl"
+  "work/внешнииобработки": "external_epf"
+
+chunking:
+  chunk_size: 1800
+  chunk_overlap: 200
 
 models:
   embedding:
@@ -104,6 +123,19 @@ models:
   reranker:
     enabled: true
     model: "jinaai/jina-reranker-v2-base-multilingual"
+```
+
+### Мультипроектный поиск
+При поиске через `search_knowledge` можно фильтровать результаты по проекту:
+```python
+# Поиск только по конфигурации АСПУ
+search_knowledge(query="Регистрация остатков паев", category="aspu")
+
+# Поиск только по сценарным и модульным тестам
+search_knowledge(query="ИнициализироватьДень", category="ТестыASPU")
+
+# Поиск по подсистемам БСП 3.0.3
+search_knowledge(query="ПрисоединяемыеФайлы", category="SSL303")
 ```
 
 ---

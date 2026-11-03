@@ -61,15 +61,25 @@ def apply_patch(target_dir: Path | None = None) -> None:
         sys.exit(1)
 
     config_content = config_py.read_text(encoding="utf-8")
+    config_changed = False
     if '".bsl"' not in config_content:
         config_content = config_content.replace(
             '".jq",\n    ]',
             '".jq",\n        ".bsl",\n        ".mdo",\n    ]'
         )
-        config_py.write_text(config_content, encoding="utf-8")
+        config_changed = True
         print("[OK] Patched config.py (_SUPPORTED_SUFFIXES updated with .bsl and .mdo)")
-    else:
-        print("[INFO] config.py already contains .bsl and .mdo")
+
+    if 'include_patterns: List[str]' not in config_content:
+        config_content = config_content.replace(
+            '    # Exclude patterns for directory traversal\n    exclude_patterns: List[str]',
+            '    # Include patterns for directory traversal (empty = include all supported)\n    include_patterns: List[str] = field(default_factory=lambda: _get("documents", "include_patterns", []))\n\n    # Exclude patterns for directory traversal\n    exclude_patterns: List[str]'
+        )
+        config_changed = True
+        print("[OK] Patched config.py (added include_patterns field)")
+
+    if config_changed:
+        config_py.write_text(config_content, encoding="utf-8")
 
     # 3. Patch ingestion.py
     ingestion_py = site_packages / "ingestion.py"
@@ -109,6 +119,52 @@ def apply_patch(target_dir: Path | None = None) -> None:
             '            doc.chunks = self._chunk_text(content, metadata)'
         )
         ingestion_content = ingestion_content.replace(old_chunk, new_chunk)
+        changed = True
+
+    if 'def _should_include(' not in ingestion_content:
+        should_inc_code = (
+            '    @staticmethod\n'
+            '    def _should_include(path: Path, base_dir: Path, patterns: List[str]) -> bool:\n'
+            '        """Check if a path matches any include pattern."""\n'
+            '        if not patterns:\n'
+            '            return True\n'
+            '        try:\n'
+            '            rel = path.relative_to(base_dir)\n'
+            '        except ValueError:\n'
+            '            rel = path\n'
+            '        rel_str = str(rel).replace("\\\\", "/")\n'
+            '        rel_str_lower = rel_str.lower()\n'
+            '        for pattern in patterns:\n'
+            '            pat_lower = pattern.lower()\n'
+            '            if fnmatch.fnmatch(rel_str_lower, pat_lower) or fnmatch.fnmatch(rel_str_lower, f"**/{pat_lower.lstrip(\'/\')}"):\n'
+            '                return True\n'
+            '            pat_prefix = pat_lower.split("/**")[0].split("/*")[0].strip("/")\n'
+            '            for part in rel.parts:\n'
+            '                if fnmatch.fnmatch(part.lower(), pat_prefix):\n'
+            '                    return True\n'
+            '        return False\n\n'
+            '    @staticmethod\n'
+            '    def _should_exclude('
+        )
+        ingestion_content = ingestion_content.replace('    @staticmethod\n    def _should_exclude(', should_inc_code)
+        changed = True
+
+    if 'include = getattr(config, "include_patterns", None)' not in ingestion_content:
+        ingestion_content = ingestion_content.replace(
+            '        exclude = config.exclude_patterns\n\n        for root, dirs, files in walk_document_paths(directory):',
+            '        exclude = config.exclude_patterns\n        include = getattr(config, "include_patterns", None)\n\n        for root, dirs, files in walk_document_paths(directory):'
+        )
+        ingestion_content = ingestion_content.replace(
+            '                if exclude and self._should_exclude(filepath, directory, exclude):\n                    continue\n                if not is_path_within(directory, filepath):',
+            '                if exclude and self._should_exclude(filepath, directory, exclude):\n                    continue\n                if include and not self._should_include(filepath, directory, include):\n                    continue\n                if not is_path_within(directory, filepath):'
+        )
+        changed = True
+
+    if 'if path_pattern.lower() in path_str:' not in ingestion_content:
+        ingestion_content = ingestion_content.replace(
+            '        for path_pattern, category in sorted(config.category_mappings.items(), key=lambda x: len(x[0]), reverse=True):\n            if path_pattern in path_str:',
+            '        for path_pattern, category in sorted(config.category_mappings.items(), key=lambda x: len(x[0]), reverse=True):\n            if path_pattern.lower() in path_str:'
+        )
         changed = True
 
     if 'def _parse_bsl(' not in ingestion_content:
