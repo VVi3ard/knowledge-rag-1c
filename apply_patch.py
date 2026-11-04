@@ -199,6 +199,69 @@ def apply_patch(target_dir: Path | None = None) -> None:
     else:
         print("[INFO] ingestion.py already up to date")
 
+    # 4. Patch server.py (0-byte file handling & BM25 memory optimization)
+    server_py = site_packages / "server.py"
+    if server_py.exists():
+        server_content = server_py.read_text(encoding="utf-8")
+        server_changed = False
+
+        # 4a. 0-byte stub handling: treat doc is None as skipped instead of fatal error
+        old_empty_doc = (
+            '                doc = self.parser.parse_file(doc)\n'
+            '                if doc is None:\n'
+            '                    raise ValueError("Document has no indexable content")'
+        )
+        new_empty_doc = (
+            '                doc = self.parser.parse_file(doc)\n'
+            '                if doc is None:\n'
+            '                    stats["skipped"] += 1\n'
+            '                    return'
+        )
+        if old_empty_doc in server_content:
+            server_content = server_content.replace(old_empty_doc, new_empty_doc)
+            server_changed = True
+            print("[OK] Patched server.py (0-byte empty files handled gracefully as skipped)")
+
+        # 4b. BM25Index memory release after snapshot
+        old_snapshot = (
+            '        self._snapshot = _BM25Snapshot(tuple(self.corpus_ids), inverted, idf, doc_lengths, avgdl)\n'
+            '\n'
+            '    def search('
+        )
+        new_snapshot = (
+            '        self._snapshot = _BM25Snapshot(tuple(self.corpus_ids), inverted, idf, doc_lengths, avgdl)\n'
+            '\n'
+            '        # Free raw text and token lists to keep RAM footprint minimal (< 2 GB instead of 36 GB)\n'
+            '        self._tokenized_corpus.clear()\n'
+            '        self.corpus.clear()\n'
+            '        self._token_pool.clear()\n'
+            '\n'
+            '    def search('
+        )
+        if old_snapshot in server_content:
+            server_content = server_content.replace(old_snapshot, new_snapshot)
+            server_changed = True
+            print("[OK] Patched server.py (BM25Index memory release enabled)")
+
+        # 4c. BM25Index.__len__ return self._corpus_size
+        old_len = (
+            '    def __len__(self) -> int:\n'
+            '        return len(self.corpus)'
+        )
+        new_len = (
+            '    def __len__(self) -> int:\n'
+            '        return self._corpus_size'
+        )
+        if old_len in server_content:
+            server_content = server_content.replace(old_len, new_len)
+            server_changed = True
+            print("[OK] Patched server.py (BM25Index.__len__ uses _corpus_size)")
+
+        if server_changed:
+            server_py.write_text(server_content, encoding="utf-8")
+        else:
+            print("[INFO] server.py already up to date")
+
     print("[SUCCESS] 1C (BSL + MDO) integration is active and verified.")
 
 
