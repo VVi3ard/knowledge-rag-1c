@@ -257,6 +257,48 @@ def apply_patch(target_dir: Path | None = None) -> None:
             server_changed = True
             print("[OK] Patched server.py (BM25Index.__len__ uses _corpus_size)")
 
+        # 4d. Post-indexing GPU VRAM release (unload_embedding_models)
+        old_index_finally = (
+            '        try:\n'
+            '            return self._index_all_impl(force, resume_state=resume_state)\n'
+            '        finally:\n'
+            '            self._index_lock.release()'
+        )
+        new_index_finally = (
+            '        try:\n'
+            '            return self._index_all_impl(force, resume_state=resume_state)\n'
+            '        finally:\n'
+            '            self._index_lock.release()\n'
+            '            self.unload_embedding_models()'
+        )
+        if 'def unload_embedding_models(self)' not in server_content:
+            unload_method = (
+                '    def unload_embedding_models(self) -> None:\n'
+                '        """Unload embedding and reranker ONNX sessions after batch indexing.\n\n'
+                '        Destroys the InferenceSession C++ objects, triggering cudaFree for all\n'
+                '        cached BFCArena memory allocations and returning 100% of GPU VRAM to the OS.\n'
+                '        Subsequent queries reload only what is needed for single queries (~1.8 GB).\n'
+                '        """\n'
+                '        try:\n'
+                '            if hasattr(self, "embed_fn") and hasattr(self.embed_fn, "_load_lock"):\n'
+                '                with self.embed_fn._load_lock:\n'
+                '                    self.embed_fn._model = None\n'
+                '            if hasattr(self, "reranker") and hasattr(self.reranker, "_load_lock"):\n'
+                '                with self.reranker._load_lock:\n'
+                '                    self.reranker._model = None\n'
+                '            import gc\n\n'
+                '            gc.collect()\n'
+                '            print("[INFO] Embedding and reranker models unloaded, GPU memory released", file=sys.stderr)\n'
+                '        except Exception as e:\n'
+                '            print(f"[WARN] Failed to unload embedding models: {e}", file=sys.stderr)\n\n'
+                '    def index_all('
+            )
+            server_content = server_content.replace('    def index_all(', unload_method)
+            server_changed = True
+            if old_index_finally in server_content:
+                server_content = server_content.replace(old_index_finally, new_index_finally)
+            print("[OK] Patched server.py (added unload_embedding_models and post-index VRAM release)")
+
         if server_changed:
             server_py.write_text(server_content, encoding="utf-8")
         else:
