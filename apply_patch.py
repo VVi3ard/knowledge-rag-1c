@@ -299,6 +299,14 @@ def apply_patch(target_dir: Path | None = None) -> None:
                 server_content = server_content.replace(old_index_finally, new_index_finally)
             print("[OK] Patched server.py (added unload_embedding_models and post-index VRAM release)")
 
+        # 4e. Reranker batch_size=1 to prevent ONNX CUDA BFCArena memory expansion
+        old_rerank = 'scores = list(self._model.rerank(query, texts))'
+        new_rerank = 'scores = list(self._model.rerank(query, texts, batch_size=1))'
+        if old_rerank in server_content:
+            server_content = server_content.replace(old_rerank, new_rerank)
+            server_changed = True
+            print("[OK] Patched server.py (Reranker batch_size=1 enabled to cap VRAM)")
+
         if server_changed:
             server_py.write_text(server_content, encoding="utf-8")
         else:
